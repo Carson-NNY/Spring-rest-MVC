@@ -34,7 +34,6 @@ public class BeerServiceJPA implements BeerService { // the reason for this impl
     public Page<BeerDTO> listBeers(String beerName, BeerStyle beerStyle, Boolean showInventory, Integer pageNumber, Integer pageSize) {
 
         PageRequest pageRequest = buildPageRequest(pageNumber, pageSize);
-
         Page<Beer> beerPage;
 
         if(StringUtils.hasText(beerName) && beerStyle == null) {
@@ -84,15 +83,15 @@ public class BeerServiceJPA implements BeerService { // the reason for this impl
     }
 
     private Page<Beer> listBeersByNameAndStyle(String beerName, BeerStyle beerStyle, Pageable pageable) {
-        return  beerRepository.findAllByBeerNameIsLikeIgnoreCaseAndBeerStyle("%" + beerName + "%", beerStyle, null);
+        return  beerRepository.findAllByBeerNameIsLikeIgnoreCaseAndBeerStyle("%" + beerName + "%", beerStyle, pageable);
     }
 
     private Page<Beer> listBeersByStyle(BeerStyle beerStyle, Pageable pageable) {
-            return beerRepository.findAllByBeerStyle(beerStyle, null);
+            return beerRepository.findAllByBeerStyle(beerStyle, pageable);
     }
 
     public Page<Beer> listBeersByName(String beerName, Pageable pageable) {
-        return beerRepository.findAllByBeerNameIsLikeIgnoreCase("%" + beerName + "%", null); // % 会直接作用到SQL
+        return beerRepository.findAllByBeerNameIsLikeIgnoreCase("%" + beerName + "%", pageable); // % 会直接作用到SQL
     }
 
     @Override

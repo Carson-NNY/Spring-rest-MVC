@@ -1,6 +1,7 @@
 package guru.springframework.spring6restmvc.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import guru.springframework.spring6restmvc.contoller.BeerControllerTest;
 import guru.springframework.spring6restmvc.entities.Beer;
 import guru.springframework.spring6restmvc.mappers.BeerMapper;
 import guru.springframework.spring6restmvc.model.BeerDTO;
@@ -30,15 +31,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.core.Is.is;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
-* @author  Carson
-* @Version
-*/
 
 // previously we were testing the controller with MockMvc, now we are testing the controller and its interacton with its JPA data layer( the database)
     //  直接使用beerRepository, 通过JPA来测试controller
@@ -54,7 +53,6 @@ class BeerControllerIntegrationTest {
     @Test
     void listBeers() {
         Page<BeerDTO> dtos = beerController.listBeers(null,null, false, 1, 2225);
-
         assertThat(dtos.getContent().size()).isEqualTo(1000);
     }
 
@@ -147,6 +145,7 @@ class BeerControllerIntegrationTest {
         });
     }
 
+
     // test the constraint violation coming up from the DB in JPA layer in our integration test
     @Autowired
     WebApplicationContext wac;
@@ -159,7 +158,9 @@ class BeerControllerIntegrationTest {
     @BeforeEach
     void setUp() {
         // this is setting up the MockMvc environment with the Spring Data repository injected into the server
-        mockMvc = MockMvcBuilders.webAppContextSetup(wac).build();
+        mockMvc = MockMvcBuilders.webAppContextSetup(wac)
+                .apply(springSecurity())  // 加入http request security protection
+                .build();
     }
 
     @Test
@@ -171,6 +172,7 @@ class BeerControllerIntegrationTest {
 
         // 下面测试的exception会被CustomErrorController里面的handleJPAViolations捕捉到然后进行处理
         MvcResult result =  mockMvc.perform(patch(BeerController.BEER_PATH_ID, beer.getId())
+                        .with(BeerControllerTest.JWT_REQUEST_POST_PROCESSOR)
                         .contentType(MediaType.APPLICATION_JSON)
                         .accept(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(beerMap)))
@@ -183,34 +185,38 @@ class BeerControllerIntegrationTest {
     @Test
     void testListBeersByName() throws Exception {
         mockMvc.perform(get(BeerController.BEER_PATH)
+                        .with(BeerControllerTest.JWT_REQUEST_POST_PROCESSOR)
                         .param("beerName", "IPA"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content.size()",is(336)));
+                .andExpect(jsonPath("$.content.size()",is(25)));
 
     }
 
     @Test
     void testListBeersByStyle() throws Exception {
         mockMvc.perform(get(BeerController.BEER_PATH)
+                        .with(BeerControllerTest.JWT_REQUEST_POST_PROCESSOR)
                         .param("beerStyle", BeerStyle.IPA.name()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content.size()",is(547)));
+                .andExpect(jsonPath("$.content.size()",is(25)));
     }
 
     @Test
     void tesListBeersByStyleAndNameShowInventoryTrue() throws Exception {
         mockMvc.perform(get(BeerController.BEER_PATH)
+                        .with(BeerControllerTest.JWT_REQUEST_POST_PROCESSOR)
                         .queryParam("beerName", "IPA")
                         .queryParam("beerStyle", BeerStyle.IPA.name())
                         .queryParam("showInventory", "true"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content.size()", is(310)))
+                .andExpect(jsonPath("$.content.size()", is(25)))
                 .andExpect(jsonPath("$.content.[0].quantityOnHand").value(IsNull.notNullValue()));
     }
 
     @Test
     void tesListBeersByStyleAndNameShowInventoryFalse() throws Exception {
         mockMvc.perform(get(BeerController.BEER_PATH)
+                        .with(BeerControllerTest.JWT_REQUEST_POST_PROCESSOR)
                         .queryParam("beerName", "IPA")
                         .queryParam("beerStyle", BeerStyle.IPA.name())
                         .queryParam("showInventory", "false"))
@@ -222,13 +228,24 @@ class BeerControllerIntegrationTest {
     @Test
     void tesListBeersByStyleAndNameShowInventoryTruePage2() throws Exception {
         mockMvc.perform(get(BeerController.BEER_PATH)
+                        .with(BeerControllerTest.JWT_REQUEST_POST_PROCESSOR)
                         .queryParam("beerName", "IPA")
                         .queryParam("beerStyle", BeerStyle.IPA.name())
                         .queryParam("showInventory", "true")
                         .queryParam("pageNumber", "2")
                         .queryParam("pageSize", "50"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content.size()", is(310)))
+                .andExpect(jsonPath("$.content.size()", is(50)))
                 .andExpect(jsonPath("$.content[0].quantityOnHand").value(IsNull.notNullValue()));
+    }
+
+    @Test
+    void testNoAuth() throws Exception {
+        //Test No Auth
+        mockMvc.perform(get(BeerController.BEER_PATH)
+                        .queryParam("beerStyle", BeerStyle.IPA.name())
+                        .queryParam("pageSize", "800"))
+                .andExpect(status().isUnauthorized());
+
     }
 }

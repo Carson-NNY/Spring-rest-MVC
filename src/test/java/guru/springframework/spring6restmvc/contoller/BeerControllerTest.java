@@ -1,6 +1,7 @@
 package guru.springframework.spring6restmvc.contoller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import guru.springframework.spring6restmvc.config.SpringSecConfig;
 import guru.springframework.spring6restmvc.controller.BeerController;
 import guru.springframework.spring6restmvc.controller.NotFoundException;
 import guru.springframework.spring6restmvc.model.BeerDTO;
@@ -13,10 +14,13 @@ import org.mockito.Captor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -28,6 +32,8 @@ import static org.hamcrest.core.Is.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -36,9 +42,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // MVC test primarily focuses on the controller layer of the application. It is used to test the controller layer of the application without starting the server.
 // 我们会使用 given method 来预设behavior, 然后用verify来确认预期的behavior
 @WebMvcTest(BeerController.class)
+@Import(SpringSecConfig.class)   //  import the security config
 public class BeerControllerTest {
 
-    @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
+//    @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
     @Autowired
     MockMvc mockMvc; // use MockMvc context
 
@@ -56,7 +63,16 @@ public class BeerControllerTest {
         beerServiceImpl = new BeerServiceImpl();
     }
 
+    public static final SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor JWT_REQUEST_POST_PROCESSOR =
+            jwt().jwt(jwt -> {
+                jwt.claims(claims ->{
+                            claims.put("scope", "message.read");
+                            claims.put("scope", "message.write");
+                        })
+                        .subject("messaging-client")
+                        .notBefore(Instant.now().minusSeconds(5l));
 
+            });
     @Test
     void getBeerById() throws Exception {
         BeerDTO testBeer = beerServiceImpl.listBeers(null, null, false, 1, 25).getContent().get(0);
@@ -67,6 +83,7 @@ public class BeerControllerTest {
 
         // test get method
         mockMvc.perform(get("/api/v1/beer/" + testBeer.getId())
+                        .with(JWT_REQUEST_POST_PROCESSOR)
                 .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())   // 确保status正确
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON)) // 确保返回JASON type
@@ -80,6 +97,7 @@ public class BeerControllerTest {
                 .willReturn(beerServiceImpl.listBeers(null, null, false, 1, 25));
 
         mockMvc.perform(get(BeerController.BEER_PATH)
+                        .with(JWT_REQUEST_POST_PROCESSOR) // 为了保证能够通过authentication
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
@@ -98,6 +116,7 @@ public class BeerControllerTest {
         given(beerService.updateBeerById(any(), any())).willReturn(Optional.of(beer));
 
         mockMvc.perform(put("/api/v1/beer/"+ beer.getId())
+                        .with(JWT_REQUEST_POST_PROCESSOR)
                 .accept(MediaType.APPLICATION_JSON)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(beer)))  // The .content() method in the mockMvc.perform() call is used to set the request body content. In this case, it is being used to set the content of the HTTP PUT request to a JSON representation of the beer object.
@@ -123,6 +142,7 @@ public class BeerControllerTest {
         given(beerService.saveNewBeer(any(BeerDTO.class))).willReturn(beerServiceImpl.listBeers(null, null, false, 1, 25).getContent().get(1));
 
         mockMvc.perform(post("/api/v1/beer")
+                        .with(JWT_REQUEST_POST_PROCESSOR)
                 .accept(MediaType.APPLICATION_JSON)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(beer)))
@@ -146,6 +166,7 @@ public class BeerControllerTest {
         given(beerService.deleteById(any(UUID.class))).willReturn(true);
 
         mockMvc.perform(delete("/api/v1/beer/"+beer.getId())
+                        .with(JWT_REQUEST_POST_PROCESSOR)
                 .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNoContent());
 
@@ -162,6 +183,7 @@ public class BeerControllerTest {
         beerMap.put("beerName", "Casonsss");
 
         mockMvc.perform(patch("/api/v1/beer/" + beer.getId())
+                        .with(JWT_REQUEST_POST_PROCESSOR)
                         .contentType(MediaType.APPLICATION_JSON)
                         .accept(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(beerMap)))
@@ -179,7 +201,9 @@ public class BeerControllerTest {
             // 设计的故意会throw一个exception
         given(beerService.getBeerById(any(UUID.class))).willThrow(NotFoundException.class);
 
-        mockMvc.perform(get(BeerController.BEER_PATH_ID, UUID.randomUUID()))
+        mockMvc.perform(get(BeerController.BEER_PATH_ID, UUID.randomUUID())
+                        .with(JWT_REQUEST_POST_PROCESSOR))
+
                 .andExpect(status().isNotFound());
     }
 
@@ -192,6 +216,7 @@ public class BeerControllerTest {
         given(beerService.saveNewBeer(any(BeerDTO.class))).willReturn(beerServiceImpl.listBeers(null, null, false, 1, 25).getContent().get(1));
 
         MvcResult mvcResult =  mockMvc.perform(post(BeerController.BEER_PATH)
+                        .with(JWT_REQUEST_POST_PROCESSOR)
                         .accept(MediaType.APPLICATION_JSON)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(beerDTO))) // content() method in the mockMvc.perform() call is used to set the request body content. In this case, it is being used to set the content of the HTTP POST request to a JSON representation of the beer object.
@@ -209,6 +234,7 @@ public class BeerControllerTest {
         given(beerService.updateBeerById(any(), any())).willReturn(Optional.of(beer));
 
         mockMvc.perform(put("/api/v1/beer/"+ beer.getId())
+                        .with(JWT_REQUEST_POST_PROCESSOR)
                         .accept(MediaType.APPLICATION_JSON)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(beer)))
