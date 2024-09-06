@@ -8,15 +8,16 @@ import org.springframework.security.web.SecurityFilterChain;
 
 import javax.swing.*;
 
-// 这个file是为了 test past,
+// setup as the oauth2 resource server
 @Configuration
 public class SpringSecConfig {
 
+    // here also adjusted for OpenAPI configuration
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-
         http.authorizeHttpRequests(authorize -> {
-                    authorize.anyRequest().authenticated();
+                    authorize.requestMatchers("/v3/api-docs**", "/swagger-ui/**",  "/swagger-ui.html").permitAll()
+                            .anyRequest().authenticated();
                 })
                 .oauth2ResourceServer(httpSecurityOAuth2ResourceServerConfigurer -> {
                     httpSecurityOAuth2ResourceServerConfigurer.jwt(Customizer.withDefaults());
