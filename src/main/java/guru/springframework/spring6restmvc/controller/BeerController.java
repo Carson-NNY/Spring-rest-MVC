@@ -45,7 +45,7 @@ public class BeerController {
     @GetMapping(value = BEER_PATH_ID)
     public BeerDTO getBeerById(@PathVariable("beerId") UUID id){
 
-        log.debug("BeerService getBeerById is called");
+        log.debug("getBeerById is called in Controller");
         // 如果找不到, 就抛出一个自定义的exception, we need to throw it at controller level
         return beerService.getBeerById(id).orElseThrow(NotFoundException::new);
     }

@@ -6,6 +6,11 @@ import guru.springframework.spring6restmvc.model.BeerDTO;
 import guru.springframework.spring6restmvc.model.BeerStyle;
 import guru.springframework.spring6restmvc.repositories.BeerRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -21,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 // the reason for using BeerServiceJPA is to use JPA, which is a Java Persistence API, a Java specification for accessing, persisting, and managing data between Java objects / classes and a relational database.
+@Slf4j  // a Lombok annotation used to automatically generate a logger instance in your class using the Simple Logging Facade for Java (SLF4J) framework.
 @Primary // mark it as primary bean
 @Service
 @RequiredArgsConstructor
@@ -29,9 +35,19 @@ public class BeerServiceJPA implements BeerService { // the reason for this impl
     private final BeerMapper beerMapper; // we use beerMapper in conjection wit BeerRepository to manage it.
     private static final int DEFAULT_PAGE = 0;
     private static final int DEFAULT_PAGE_SIZE = 25;
+    private final CacheManager cacheManager;
 
+    //Cache eviction refers to the process of removing items from a cache to  reflect changes in the cache or make space for new data.
+    private void clearCache(UUID beerId) {
+        cacheManager.getCache("beerCache").evict(beerId);
+        cacheManager.getCache("beerListCache").clear();
+    }
+
+    @Cacheable(cacheNames = "beerListCache")
     @Override
     public Page<BeerDTO> listBeers(String beerName, BeerStyle beerStyle, Boolean showInventory, Integer pageNumber, Integer pageSize) {
+
+        log.info("List Beer - in service");
 
         PageRequest pageRequest = buildPageRequest(pageNumber, pageSize);
         Page<Beer> beerPage;
@@ -94,21 +110,27 @@ public class BeerServiceJPA implements BeerService { // the reason for this impl
         return beerRepository.findAllByBeerNameIsLikeIgnoreCase("%" + beerName + "%", pageable); // % 会直接作用到SQL
     }
 
+    @Cacheable(cacheNames = "beerCache", key = "#id")
     @Override
     public Optional<BeerDTO> getBeerById(UUID id) {
-
+        log.info("Get beer By Id - in service");
         return Optional.ofNullable(beerMapper.beerToBeerDto(beerRepository.findById(id)
                 .orElse(null)));
     }
 
     @Override
     public BeerDTO saveNewBeer(BeerDTO beer) {
+        cacheManager.getCache("beerListCache").clear(); // need to clear the cache so that next time we call listBeers we will get latest data
+
         // how it works is that we are saving the beer to the repository, and then we are converting the beer to a beerDTO and returning it.
         return beerMapper.beerToBeerDto(beerRepository.save(beerMapper.beerDtoToBeer(beer)));
     }
 
+
+
     @Override
     public Optional<BeerDTO> updateBeerById(UUID beerId, BeerDTO beer) {
+        clearCache(beerId);
 
         //we need AtomicReference to be able to set the value of the atomic reference inside the lambda expression
         AtomicReference<Optional<BeerDTO>> atomicReference = new AtomicReference<>();
@@ -129,6 +151,9 @@ public class BeerServiceJPA implements BeerService { // the reason for this impl
 
     @Override
     public Boolean deleteById(UUID beerId) {
+        //Cache eviction refers to the process of removing items from a cache to make space for new data.
+        clearCache(beerId);
+
         if(beerRepository.existsById(beerId)){
             beerRepository.deleteById(beerId);
             return true;
@@ -138,6 +163,8 @@ public class BeerServiceJPA implements BeerService { // the reason for this impl
 
     @Override
     public Optional<BeerDTO> patchBeerById(UUID beerId, BeerDTO beer) {
+        clearCache(beerId);
+
         AtomicReference<Optional<BeerDTO>> atomicReference = new AtomicReference<>();
 
         beerRepository.findById(beerId).ifPresentOrElse(foundBeer -> {
