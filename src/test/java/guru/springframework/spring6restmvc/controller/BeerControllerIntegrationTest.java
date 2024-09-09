@@ -3,12 +3,17 @@ package guru.springframework.spring6restmvc.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import guru.springframework.spring6restmvc.contoller.BeerControllerTest;
 import guru.springframework.spring6restmvc.entities.Beer;
+import guru.springframework.spring6restmvc.events.BeerCreatedEvent;
+import guru.springframework.spring6restmvc.events.BeerDeletedEvent;
+import guru.springframework.spring6restmvc.events.BeerPatchedEvent;
+import guru.springframework.spring6restmvc.events.BeerUpdatedEvent;
 import guru.springframework.spring6restmvc.mappers.BeerMapper;
 import guru.springframework.spring6restmvc.model.BeerDTO;
 import guru.springframework.spring6restmvc.model.BeerStyle;
 import guru.springframework.spring6restmvc.repositories.BeerRepository;
 import lombok.val;
 import org.hamcrest.core.IsNull;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -19,6 +24,8 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.annotation.Rollback;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -42,7 +49,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 // previously we were testing the controller with MockMvc, now we are testing the controller and its interacton with its JPA data layer( the database)
     //  直接使用beerRepository, 通过JPA来测试controller
 @SpringBootTest
+@RecordApplicationEvents // to test the events
 class BeerControllerIntegrationTest {
+
+    @Autowired
+    ApplicationEvents applicationEvents;
 
     @Autowired
     BeerController beerController;
@@ -248,6 +259,86 @@ class BeerControllerIntegrationTest {
                 .andExpect(status().isUnauthorized());
 
     }
+
+    // testing the event!
+    @Test
+    void testCreateBeerMVC() throws Exception {
+        val beerDTO = BeerDTO.builder()
+                .beerName("New Beer")
+                .beerStyle(BeerStyle.IPA)
+                .upc("123123")
+                .price(BigDecimal.TEN)
+                .quantityOnHand(5)
+                .build();
+
+        mockMvc.perform(post(BeerController.BEER_PATH)
+                        .with(BeerControllerTest.JWT_REQUEST_POST_PROCESSOR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(beerDTO)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        Assertions.assertEquals(1, applicationEvents.stream(BeerCreatedEvent.class).count());
+    }
+
+    @Test
+    void testUpdateBeer() throws Exception {
+        Beer beer = beerRepository.findAll().get(0);
+
+        BeerDTO beerDTO = beerMapper.beerToBeerDto(beer);
+
+        beerDTO.setBeerName("Updated Name");
+
+        mockMvc.perform(put(BeerController.BEER_PATH_ID, beer.getId())
+                        .with(BeerControllerTest.JWT_REQUEST_POST_PROCESSOR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(beerDTO)))
+                .andExpect(status().isNoContent())
+                .andReturn();
+
+        Assertions.assertEquals(1, applicationEvents
+                .stream(BeerUpdatedEvent.class)
+                .count());
+    }
+
+    @Test
+    void testPatchBeerMvc() throws Exception {
+        Beer beer = beerRepository.findAll().get(0);
+
+        Map<String, Object> beerMap = new HashMap<>();
+        beerMap.put("beerName", "New Name");
+
+        mockMvc.perform(patch(BeerController.BEER_PATH_ID, beer.getId())
+                        .with(BeerControllerTest.JWT_REQUEST_POST_PROCESSOR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(beerMap)))
+                .andExpect(status().isNoContent())
+                .andReturn();
+
+        Assertions.assertEquals(1, applicationEvents
+                .stream(BeerPatchedEvent.class)
+                .count());
+    }
+
+    @Test
+    void deleteByIdFoundMVC() throws Exception {
+        Beer beer = beerRepository.findAll().get(0);
+
+        mockMvc.perform(delete(BeerController.BEER_PATH_ID, beer.getId())
+                        .with(BeerControllerTest.JWT_REQUEST_POST_PROCESSOR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNoContent())
+                .andReturn();
+
+        Assertions.assertEquals(1, applicationEvents
+                .stream(BeerDeletedEvent.class)
+                .count());
+    }
+
 
 
 }

@@ -1,21 +1,26 @@
 package guru.springframework.spring6restmvc.services;
 
 import guru.springframework.spring6restmvc.entities.Beer;
+import guru.springframework.spring6restmvc.events.*;
 import guru.springframework.spring6restmvc.mappers.BeerMapper;
 import guru.springframework.spring6restmvc.model.BeerDTO;
 import guru.springframework.spring6restmvc.model.BeerStyle;
 import guru.springframework.spring6restmvc.repositories.BeerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import lombok.val;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -36,6 +41,7 @@ public class BeerServiceJPA implements BeerService { // the reason for this impl
     private static final int DEFAULT_PAGE = 0;
     private static final int DEFAULT_PAGE_SIZE = 25;
     private final CacheManager cacheManager;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     //Cache eviction refers to the process of removing items from a cache to  reflect changes in the cache or make space for new data.
     private void clearCache(UUID beerId) {
@@ -120,10 +126,19 @@ public class BeerServiceJPA implements BeerService { // the reason for this impl
 
     @Override
     public BeerDTO saveNewBeer(BeerDTO beer) {
-        cacheManager.getCache("beerListCache").clear(); // need to clear the cache so that next time we call listBeers we will get latest data
+        // need to clear the cache so that next time we call listBeers we will get latest data
+        if(cacheManager.getCache("beerListCache") != null) {
+            cacheManager.getCache("beerListCache").clear();
+        }
+
+        val savedBeer = beerRepository.save(beerMapper.beerDtoToBeer(beer));
+
+        // set up an application event
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        applicationEventPublisher.publishEvent(new BeerCreatedEvent(savedBeer, authentication));
 
         // how it works is that we are saving the beer to the repository, and then we are converting the beer to a beerDTO and returning it.
-        return beerMapper.beerToBeerDto(beerRepository.save(beerMapper.beerDtoToBeer(beer)));
+        return beerMapper.beerToBeerDto(savedBeer);
     }
 
 
@@ -142,7 +157,13 @@ public class BeerServiceJPA implements BeerService { // the reason for this impl
             beer1.setUpc(beer.getUpc());
             beer1.setQuantityOnHand(beer.getQuantityOnHand());
             beer1.setVersion(beer.getVersion());
-            atomicReference.set(Optional.of(beerMapper.beerToBeerDto(beerRepository.save(beer1))));
+
+            val savedBeer = beerRepository.save(beer1);
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+            applicationEventPublisher.publishEvent(new BeerUpdatedEvent( savedBeer, authentication));
+
+            atomicReference.set(Optional.of(beerMapper.beerToBeerDto(savedBeer)));
         }, () ->{ // if the beer is not found, we set the atomic reference to empty
             atomicReference.set(Optional.empty());
         });
@@ -155,6 +176,9 @@ public class BeerServiceJPA implements BeerService { // the reason for this impl
         clearCache(beerId);
 
         if(beerRepository.existsById(beerId)){
+            val authentication = SecurityContextHolder.getContext().getAuthentication();
+            applicationEventPublisher.publishEvent(new BeerDeletedEvent(Beer.builder().id(beerId).build(), authentication));
+
             beerRepository.deleteById(beerId);
             return true;
         }
@@ -183,8 +207,14 @@ public class BeerServiceJPA implements BeerService { // the reason for this impl
             if (beer.getQuantityOnHand() != null){
                 foundBeer.setQuantityOnHand(beer.getQuantityOnHand());
             }
+
+            val savedBeer = beerRepository.save(foundBeer);
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+            applicationEventPublisher.publishEvent(new BeerPatchedEvent( savedBeer, authentication));
+
             atomicReference.set(Optional.of(beerMapper
-                    .beerToBeerDto(beerRepository.save(foundBeer))));
+                    .beerToBeerDto(savedBeer)));
         }, () -> {
             atomicReference.set(Optional.empty());
         });
