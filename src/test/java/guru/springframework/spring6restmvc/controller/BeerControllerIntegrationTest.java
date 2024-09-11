@@ -10,12 +10,12 @@ import guru.springframework.spring6restmvc.events.BeerUpdatedEvent;
 import guru.springframework.spring6restmvc.mappers.BeerMapper;
 import guru.springframework.spring6restmvc.model.BeerDTO;
 import guru.springframework.spring6restmvc.model.BeerStyle;
+import guru.springframework.spring6restmvc.repositories.BeerOrderRepository;
 import guru.springframework.spring6restmvc.repositories.BeerRepository;
 import lombok.val;
 import org.hamcrest.core.IsNull;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -52,6 +52,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 @RecordApplicationEvents // to test the events
 class BeerControllerIntegrationTest {
 
+    //首先展示的是一种普通的controller test的方法
+
     @Autowired
     ApplicationEvents applicationEvents;
 
@@ -60,6 +62,9 @@ class BeerControllerIntegrationTest {
 
     @Autowired
     BeerRepository beerRepository;
+
+    @Autowired
+    BeerOrderRepository beerOrderRepository;
 
     @Test
     void listBeers() {
@@ -71,6 +76,8 @@ class BeerControllerIntegrationTest {
     @Rollback // this is to make sure that the database is rolled back after the test, so that the database is not changed by the test
     @Test
     void testEmptyList() {
+        beerOrderRepository.deleteAll();
+                
         beerRepository.deleteAll();
         Page<BeerDTO> dtos = beerController.listBeers(null,null, false, 1, 25);
         assertThat(dtos.getContent().size()).isEqualTo(0);
@@ -156,6 +163,13 @@ class BeerControllerIntegrationTest {
         });
     }
 
+
+
+
+
+
+
+    // 展示Mockito的方法
 
     // test the constraint violation coming up from the DB in JPA layer in our integration test
     @Autowired
@@ -325,7 +339,13 @@ class BeerControllerIntegrationTest {
 
     @Test
     void deleteByIdFoundMVC() throws Exception {
-        Beer beer = beerRepository.findAll().get(0);
+
+        Beer beer = beerRepository.save(Beer.builder()
+                .beerName("New Beer")
+                .beerStyle(BeerStyle.IPA)
+                .upc("123123")
+                .price(BigDecimal.TEN)
+                .build());
 
         mockMvc.perform(delete(BeerController.BEER_PATH_ID, beer.getId())
                         .with(BeerControllerTest.JWT_REQUEST_POST_PROCESSOR)

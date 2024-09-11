@@ -16,6 +16,7 @@ import java.util.UUID;
 @Builder  // 这里加了Builder method后, 在services里面的implementation可以使用builder() pattern for cleaner code
 @Data // Lombok annotation: Equivalent to @Getter @Setter @RequiredArgsConstructor @ToString @EqualsAndHashCode.
 public class BeerDTO {
+
     // DTO stands for Data Transfer Object, it is used to transfer data between software application subsystems.
     // DTOs are often used in conjunction with data access objects to retrieve data from a database.
     // the reason we need this is because we don't want to expose the entity to the outside world, we want to expose the DTO.

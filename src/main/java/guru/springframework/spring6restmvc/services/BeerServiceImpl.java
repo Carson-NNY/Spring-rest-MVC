@@ -16,6 +16,8 @@ import java.util.*;
  * @author Carson
  * @Version
  */
+
+// 这里implementation只是用的dummy data, 没有和database交互
 @Slf4j
 @Service
 public class BeerServiceImpl implements BeerService {
